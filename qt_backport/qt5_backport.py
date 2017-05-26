@@ -14,13 +14,9 @@ from __future__ import absolute_import
 
 import sys
 import inspect
+#from itertools import izip
 import warnings
 import pkgutil
-import cgi # for QtCore.escape
-try:
-    from itertools import izip as zip
-except ImportError: # we're using python 3.x
-    pass
 
 
 try:
@@ -32,14 +28,9 @@ from PyQt5 import QtGui          as _PyQt5_QtGui
 from PyQt5 import QtCore         as _PyQt5_QtCore
 from PyQt5 import QtPrintSupport as _PyQt5_QtPrintSupport
 from PyQt5 import QtMultimedia   as _PyQt5_QtMultimedia
-try:
-    from PyQt5 import QtX11Extras    as _PyQt5_QtX11Extras
-except ImportError:
-    x11_exists = False #on Windows
-else:
-    x11_exists = True
+#from PyQt5 import QtX11Extras    as _PyQt5_QtX11Extras
 
-import qt_backport
+import qtbackportsimpl
 
 _OBSOLETE_ = "__obsolete__in__Qt5__"
 
@@ -256,11 +247,8 @@ def reassemble_QtGui(qt_pkg):
                      QtPrintSupport_backports: qt_pkg.QtPrintSupport,
                      QtCore_backports:         qt_pkg.QtCore,
                      QtMultimedia_backports:   qt_pkg.QtMultimedia,
+#                     QtX11Extras_backports:    qt_pkg.QtX11Extras,
                      }
-    
-    if x11_exists:
-        backport_info[QtX11Extras_backports] = qt_pkg.QtX11Extras
-    
     for cls_names, module in backport_info.items():
         for cls_name in cls_names:
             cls = getattr(module, cls_name)
@@ -351,7 +339,7 @@ def _patch_QHeaderView(qt_pkg):
     
     #simple renames...
     cls.isClickable = lambda self: self.sectionsClickable()
-    cls.isMovable = lambda self: self.sectionsMovable()
+    cls.isMovable = lambda self: self.secionsMovable()
     cls.resizeMode = lambda self, logicalIndex: self.sectionResizeMode(logicalIndex)
     cls.setClickable = lambda self, clickable: self.setSectionsClickable(clickable)
     cls.setMovable = lambda self, movable: self.setSectionsMovable(movable)
@@ -399,9 +387,6 @@ def _patch_QPainter(qt_pkg):
             #Currently only supporting the overload with this signature:
             #  ([QRectF, ], [QRectF, ], QPixmap, PixmapFragmentHints)
             # 
-            if len(args[0]) == 0:
-                #nothing to do...
-                return
             if type(args[0][0]) != qt_pkg.QtCore.QRectF:
                 #currently only supporting this overload.  Pass through and pray:
                 return old_drawPixmapFragments(self, *args, **kwargs)
@@ -464,6 +449,23 @@ def _patch_QRectF(qt_pkg):
     cls = qt_pkg.QtCore.QRectF
     cls.intersect = lambda self, rectangle: self.intersected(rectangle)
     cls.unite = lambda self, rectangle: self.united(rectangle)
+
+def _patch_QTreeWidgetItem(qt_pkg):
+    cls = qt_pkg.QtWidgets.QTreeWidgetItem
+    if not cls.__hash__:
+        cls.__hash__ = lambda s: hash(str(s))
+
+def _patch_QTreeWidget(qt_pkg):
+    cls = qt_pkg.QtWidgets.QTreeWidget
+    cls.isItemExpanded = lambda s,x:x.isExpanded
+
+def _patch_QEvent(qt_pkg):
+    QEvent = qt_pkg.QtCore.QEvent
+    QEvent.Type = QEvent
+
+def _patch_QTextFormat(qt_pkg):
+    cls = qt_pkg.QtGui.QTextCharFormat
+    cls.UnderlineStyle.SpellCheckUnderline = qt_pkg.QtGui.QTextCharFormat.SpellCheckUnderline
 
 def _patch_QWheelEvent(qt_pkg):
     #see http://qt-project.org/doc/qt-5/qwheelevent-obsolete.html
@@ -556,10 +558,8 @@ def _patch_QWheelEvent(qt_pkg):
     cls.delta       = _QWheelEvent_delta
     cls.orientation = _QWheelEvent_orientation
 
-def _patch_Qt(qt_pkg):
-    cls = qt_pkg.QtCore.Qt
-    
-    cls.escape = staticmethod(lambda s: cgi.escape(s, True)) # no ' escape in Qt4
+
+
 
 def patch_api(qt_pkg):
     """Applies patches to make old api usage work with PyQt5.
@@ -587,8 +587,10 @@ def patch_api(qt_pkg):
     _patch_QPainterPath(qt_pkg)
     _patch_QRectF(qt_pkg)
     _patch_QWheelEvent(qt_pkg)
-    
-    _patch_Qt(qt_pkg)
+    _patch_QTreeWidgetItem(qt_pkg)
+    _patch_QEvent(qt_pkg)
+    _patch_QTextFormat(qt_pkg)
+    _patch_QTreeWidget(qt_pkg)
     
     #And likely plenty more to come!
 
